@@ -1,0 +1,182 @@
+// Snippet 1
+// Models/Product.cs
+
+public class Product
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public double Price { get; set; }
+}
+
+
+// Snippet 2
+// Layout folder,  ProductDisplay.razor
+@using OnlineShop.Models
+
+<div class="card w-50">
+    <div class="card-body">
+        <h5 class="card-title">@Product.Name</h5>
+        <p class="card-text">@Product.Description</p>
+        <blockquote class="card-text">$@Product.Price</blockquote>
+   
+ 
+    </div>
+</div>
+
+@code {
+    [EditorRequired]  //enforce must have Product parameter provided
+    [Parameter]       // Product is a parameter of this component
+    public Product Product { get; set; } = new();
+
+}
+
+// Snippet 3
+// Pages, ProductList.razor
+// the reference books.json is provided for you in the walkthrough package
+
+@page "/product-list"
+@using OnlineShop.Models
+@inject HttpClient Http
+
+<h3>Product List</h3>
+@foreach (var product in Products)
+{
+    <ProductDisplay Product="product" />
+}
+
+@code {
+    public List<Product> Products { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // not a real ReST service, but simple fetch to simulate one to keep this lab simple
+        Products = await Http.GetFromJsonAsync<List<Product>>("sample-data/books.json") ?? new();
+    }
+}
+
+
+// Snippet 4
+// States/CartState.cs
+namespace OnlineShop.States;
+using OnlineShop.Models;
+using System.Net.Http;
+using System.Net.Http.Json;
+
+public class CartState
+{
+    private readonly HttpClient _httpClient;
+
+    public List<Product> SelectedItems { get; set; } = new();
+
+    public CartState(HttpClient httpClient)
+    {
+        _httpClient = httpClient;
+    }
+
+    public async Task AddProductToCartAsync(Guid productId)
+    {
+        if (SelectedItems.Any(p => p.Id == productId) is false)
+        {
+            var products = await _httpClient.GetFromJsonAsync<List<Product>>("sample-data/books.json") ?? new();
+            var product = products.First(p => p.Id == productId);
+            SelectedItems.Add(product);
+        }
+    }
+}
+
+// snippet 4b
+// update Program.cs
+
+builder.Services.AddScoped<CartState>();
+
+// snippet 5
+// allow users to put items in the CartState
+// ProductDisplay.razor
+
+@inject CartState CartState
+
+...
+@if (DisplayBuyButton)
+{
+    // add this to the html section
+    <button class="btn btn-primary" type="button" @onclick="_ => CartState.AddProductToCartAsync(Product.Id)">Buy</button>
+}
+
+...
+@code {
+    ...
+    [Parameter]
+    public bool DisplayBuyButton { get; set; } = false;
+}
+
+// snippet 6
+// Pages/Checkout.razor
+@page "/checkout"
+@using OnlineShop.Models
+@using OnlineShop.Models.Forms
+@using OnlineShop.States
+@inject IJSRuntime JSRuntime
+@inject CartState CartState
+
+<h3>Checkout</h3>
+<span>You have @CartState.SelectedItems.Count item(s) in your cart.</span>
+@foreach (var selectedItem in CartState.SelectedItems)
+{
+    <ProductDisplay Product="selectedItem" />
+}
+
+// snippet 7
+// Models/Forms/CheckoutForm.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace OnlineShop.Models.Forms
+{
+
+    public class CheckoutForm
+    {
+        [Required(ErrorMessage = "Name is required.")]
+        public string Name { get; set; } = "";
+        [Required(ErrorMessage = "We need the address to deliver the product.")]
+        public string Address { get; set; } = "";
+    }
+}
+
+// snippet 7b
+// add the form to the Checkout page: Pages/Checkout.razor
+@inject IJSRuntime JSRuntime
+
+
+..
+.. put this below the product list 
+..
+
+<EditForm class="vstack gap-3" Model="CheckoutForm" OnValidSubmit="SubmitAsync">
+    <DataAnnotationsValidator></DataAnnotationsValidator>
+    <div>
+        <label class="form-label" for="name">Name:</label>
+        <InputText id="name" class="form-control" @bind-Value="CheckoutForm.Name"></InputText>
+        <ValidationMessage class="form-control" For="()=>CheckoutForm.Name"></ValidationMessage>
+    </div>
+
+    <div>
+        <label class="form-label" for="address">Address:</label>
+        <InputText id="address" class="form-control" @bind-Value="CheckoutForm.Address"></InputText>
+        <ValidationMessage class="form-control" For="()=>CheckoutForm.Address"></ValidationMessage>
+    </div>
+
+    <div>
+        <button class="btn btn-primary" type="submit">Submit</button>
+    </div>
+</EditForm>
+..
+@code {
+    public CheckoutForm CheckoutForm { get; set; } = new();
+
+     private async Task SubmitAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("alert", $"Thank you {CheckoutForm.Name}, we will deliver to {CheckoutForm.Address}.");
+    }
+}
+..
+
